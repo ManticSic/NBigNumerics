@@ -4,21 +4,20 @@ using System.Text;
 
 namespace NBigNumerics;
 
-public class BigNumber : IBigNumber
+public sealed class BigNumber : IBigNumber
 {
-    private static readonly char DECIMAL_SEPARATOR = '#';
-    private static readonly ICollection<char> ALLOWED_DIGITS = new List<char> { '1', '2', '3', '4', '5', '6', '7', '8', '9', '0' };
-    private static readonly ICollection<char> ALLOWED_SIGNING = new List<char> { '+', '-' };
+    private static readonly ICollection<char> AllowedDigits = new List<char> { '1', '2', '3', '4', '5', '6', '7', '8', '9', '0' };
+    private static readonly ICollection<char> AllowedSigning = new List<char> { '+', '-' };
 
-    private readonly ImmutableList<int> integerPart;
-    private readonly ImmutableList<int> decimalPart;
-    private readonly bool isPositiv;
+    private readonly ImmutableList<int> _integerPart;
+    private readonly ImmutableList<int> _decimalPart;
+    private readonly bool _isPositive;
 
-    public BigNumber(ImmutableList<int> integerPart, ImmutableList<int> decimalPart, bool isPositiv)
+    private BigNumber(ImmutableList<int> integerPart, ImmutableList<int> decimalPart, bool isPositive)
     {
-        this.integerPart = integerPart;
-        this.decimalPart = decimalPart;
-        this.isPositiv = isPositiv;
+        _integerPart = integerPart;
+        _decimalPart = decimalPart;
+        _isPositive = isPositive;
     }
 
     public static BigNumber Create(string value)
@@ -28,11 +27,7 @@ public class BigNumber : IBigNumber
 
     public static BigNumber Create(string value, CultureInfo cultureInfo)
     {
-        string integerPartAsString;
-        string? decimalPartAsString;
-        bool isPositive;
-
-        ValueGuard(value, cultureInfo, out integerPartAsString, out decimalPartAsString, out isPositive);
+        ValueGuard(value, cultureInfo, out string integerPartAsString, out string decimalPartAsString, out bool isPositive);
 
         integerPartAsString = RemoveLeadingZeros(integerPartAsString);
 
@@ -47,27 +42,30 @@ public class BigNumber : IBigNumber
     {
         value = value.Trim();
         value = value.Replace(cultureInfo.NumberFormat.NumberGroupSeparator, String.Empty);
-        value = value.Replace(cultureInfo.NumberFormat.NumberDecimalSeparator, DECIMAL_SEPARATOR.ToString());
 
-        string[] parts = value.Split(DECIMAL_SEPARATOR);
+        string[] parts = value.Split(cultureInfo.NumberFormat.NumberDecimalSeparator);
 
-        if (parts.Length > 2)
+        switch (parts.Length)
         {
-            throw new ArgumentException("Too many decimal separators.", nameof(value));
+            case > 2:
+            {
+                throw new ArgumentException("Too many decimal separators.", nameof(value));
+            }
+            case 2:
+            {
+                integerPart = parts[0];
+                decimalPart = parts[1];
+                break;
+            }
+            default:
+            {
+                integerPart = parts[0];
+                decimalPart = string.Empty;
+                break;
+            }
         }
 
-        if (parts.Length == 2)
-        {
-            integerPart = parts[0];
-            decimalPart = parts[1];
-        }
-        else
-        {
-            integerPart = parts[0];
-            decimalPart = String.Empty;
-        }
-
-        if (!ALLOWED_DIGITS.Contains(integerPart[0]) && ALLOWED_SIGNING.Contains(integerPart[0]))
+        if (!AllowedDigits.Contains(integerPart[0]) && AllowedSigning.Contains(integerPart[0]))
         {
             isPositive = integerPart[0] == '+';
             integerPart = integerPart.Substring(1);
@@ -77,12 +75,12 @@ public class BigNumber : IBigNumber
             isPositive = true;
         }
 
-        if (integerPart.Any(character => !ALLOWED_DIGITS.Contains(character)))
+        if (integerPart.Any(character => !AllowedDigits.Contains(character)))
         {
             throw new ArgumentException("Unable to parse value. Unexpected digit(s) in integer part.", nameof(value));
         }
 
-        if (decimalPart.Any(character => !ALLOWED_DIGITS.Contains(character)))
+        if (decimalPart.Any(character => !AllowedDigits.Contains(character)))
         {
             throw new ArgumentException("Unable to parse value. Unexpected digit(s) in decimal part.", nameof(value));
         }
@@ -102,7 +100,8 @@ public class BigNumber : IBigNumber
 
     private static ImmutableList<int> CreateImmutableList(string part)
     {
-        return part.Select(character => int.Parse(character.ToString()))
+        return part.Select(character => character.ToString())
+            .Select(int.Parse)
             .ToImmutableList();
     }
 
@@ -122,7 +121,7 @@ public class BigNumber : IBigNumber
 
         int groupCounter = 0;
 
-        foreach (int digit in integerPart.Reverse())
+        foreach (int digit in _integerPart.Reverse())
         {
             groupCounter++;
 
@@ -137,11 +136,11 @@ public class BigNumber : IBigNumber
 
         result.Append(integerAsString);
 
-        if (decimalPart.Count > 0)
+        if (_decimalPart.Count > 0)
         {
             StringBuilder decimalAsString = new StringBuilder();
 
-            foreach (int digit in decimalPart.Reverse())
+            foreach (int digit in _decimalPart.Reverse())
             {
                 decimalAsString.Insert(0, digit);
             }
@@ -150,7 +149,7 @@ public class BigNumber : IBigNumber
             result.Append(decimalAsString);
         }
 
-        if (!isPositiv)
+        if (!_isPositive)
         {
             result.Insert(0, '-');
         }
