@@ -11,13 +11,13 @@ public sealed class BigNumber : IBigNumber
 
     private readonly ImmutableList<int> _integerPart;
     private readonly ImmutableList<int> _decimalPart;
-    private readonly bool _isPositive;
+    private readonly Signing _signing;
 
-    private BigNumber(ImmutableList<int> integerPart, ImmutableList<int> decimalPart, bool isPositive)
+    private BigNumber(ImmutableList<int> integerPart, ImmutableList<int> decimalPart, Signing signing)
     {
         _integerPart = integerPart;
         _decimalPart = decimalPart;
-        _isPositive = isPositive;
+        _signing = signing;
     }
 
     public static BigNumber Create(string value)
@@ -27,63 +27,58 @@ public sealed class BigNumber : IBigNumber
 
     public static BigNumber Create(string value, CultureInfo cultureInfo)
     {
-        ValueGuard(value, cultureInfo, out string integerPartAsString, out string decimalPartAsString, out bool isPositive);
+        RawBigNumber raw = CreateRaw(value, cultureInfo);
 
-        integerPartAsString = RemoveLeadingZeros(integerPartAsString);
+#pragma warning disable AV1522
+        raw = raw with { IntegerPart = RemoveLeadingZeros(raw.IntegerPart) };
+#pragma warning restore AV1522
 
-        ImmutableList<int> integerPart = CreateImmutableList(integerPartAsString);
-        ImmutableList<int> decimalPart = CreateImmutableList(decimalPartAsString);
-
-        return new BigNumber(integerPart, decimalPart, isPositive);
+        return raw.ToBigNumber();
     }
 
-    private static void ValueGuard(string value, CultureInfo cultureInfo, out string integerPart, out string decimalPart,
-        out bool isPositive)
+    private static RawBigNumber CreateRaw(string value, CultureInfo cultureInfo)
     {
-        value = value.Trim();
-        value = value.Replace(cultureInfo.NumberFormat.NumberGroupSeparator, String.Empty);
+        value = value.Trim()
+            .Replace(cultureInfo.NumberFormat.NumberGroupSeparator, String.Empty);
 
         string[] parts = value.Split(cultureInfo.NumberFormat.NumberDecimalSeparator);
 
-        switch (parts.Length)
+        if (parts.Length > 2)
         {
-            case > 2:
-            {
-                throw new ArgumentException("Too many decimal separators.", nameof(value));
-            }
-            case 2:
-            {
-                integerPart = parts[0];
-                decimalPart = parts[1];
-                break;
-            }
-            default:
-            {
-                integerPart = parts[0];
-                decimalPart = string.Empty;
-                break;
-            }
+            throw new ArgumentException("Too many decimal separators.", nameof(value));
         }
 
-        if (!AllowedDigits.Contains(integerPart[0]) && AllowedSigning.Contains(integerPart[0]))
-        {
-            isPositive = integerPart[0] == '+';
-            integerPart = integerPart.Substring(1);
-        }
-        else
-        {
-            isPositive = true;
-        }
+        RawBigNumber raw = CreateRawFromParts(parts);
 
-        if (integerPart.Any(character => !AllowedDigits.Contains(character)))
+        if (raw.IntegerPart.Any(character => !AllowedDigits.Contains(character)))
         {
             throw new ArgumentException("Unable to parse value. Unexpected digit(s) in integer part.", nameof(value));
         }
 
-        if (decimalPart.Any(character => !AllowedDigits.Contains(character)))
+        if (raw.DecimalPart.Any(character => !AllowedDigits.Contains(character)))
         {
             throw new ArgumentException("Unable to parse value. Unexpected digit(s) in decimal part.", nameof(value));
         }
+
+        return raw;
+    }
+
+    private static RawBigNumber CreateRawFromParts(string[] parts)
+    {
+        Signing signing;
+        string integerPart = parts[0];
+
+        if (!AllowedDigits.Contains(integerPart[0]) && AllowedSigning.Contains(integerPart[0]))
+        {
+            signing = integerPart[0] == '+' ? Signing.Positive : Signing.Negative;
+            integerPart = integerPart.Substring(1);
+        }
+        else
+        {
+            signing = Signing.Positive;
+        }
+
+        return new RawBigNumber(integerPart, parts.Length == 2 ? parts[1] : string.Empty, signing);
     }
 
     private static string RemoveLeadingZeros(string input)
@@ -96,13 +91,6 @@ public sealed class BigNumber : IBigNumber
         }
 
         return result;
-    }
-
-    private static ImmutableList<int> CreateImmutableList(string part)
-    {
-        return part.Select(character => character.ToString())
-            .Select(int.Parse)
-            .ToImmutableList();
     }
 
     public string Format()
@@ -151,7 +139,7 @@ public sealed class BigNumber : IBigNumber
             integerAsString.Insert(0, digit);
         }
 
-        if (!_isPositive)
+        if (_signing == Signing.Negative)
         {
             integerAsString.Insert(0, '-');
         }
@@ -162,5 +150,29 @@ public sealed class BigNumber : IBigNumber
     private string FormatDecimalPart()
     {
         return _decimalPart.Aggregate(string.Empty, (seed, digit) => seed + digit);
+    }
+
+    private enum Signing
+    {
+        Positive,
+        Negative
+    }
+
+    private record RawBigNumber(string IntegerPart, string DecimalPart, Signing Signing)
+    {
+        public BigNumber ToBigNumber()
+        {
+            ImmutableList<int> immutableIntegerPart = CreateImmutableList(IntegerPart);
+            ImmutableList<int> immutableDecimalPart = CreateImmutableList(DecimalPart);
+
+            return new BigNumber(immutableIntegerPart, immutableDecimalPart, Signing);
+        }
+
+        private static ImmutableList<int> CreateImmutableList(string part)
+        {
+            return part.Select(character => character.ToString())
+                .Select(int.Parse)
+                .ToImmutableList();
+        }
     }
 }
