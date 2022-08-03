@@ -113,10 +113,27 @@ public sealed class BigNumber : IBigNumber
     public string Format(CultureInfo cultureInfo)
     {
         string decimalSeparator = cultureInfo.NumberFormat.NumberDecimalSeparator;
-        string groupSeparator = cultureInfo.NumberFormat.NumberGroupSeparator;
+
+        string integerAsString = FormatIntegerPart(cultureInfo);
+
+        switch (_decimalPart.Count)
+        {
+            case > 0:
+            {
+                string decimalAsString = FormatDecimalPart();
+                return $"{integerAsString}{decimalSeparator}{decimalAsString}";
+            }
+            default:
+            {
+                return integerAsString;
+            }
+        }
+    }
+
+    private string FormatIntegerPart(CultureInfo cultureInfo)
+    {
         int groupSize = 3; // todo use cultureInfo.NumberFormat.NumberGroupSize
 
-        StringBuilder result = new StringBuilder();
         StringBuilder integerAsString = new StringBuilder();
 
         int groupCounter = 0;
@@ -127,33 +144,23 @@ public sealed class BigNumber : IBigNumber
 
             if (groupCounter == groupSize + 1)
             {
-                integerAsString.Insert(0, groupSeparator);
+                integerAsString.Insert(0, cultureInfo.NumberFormat.NumberGroupSeparator);
                 groupCounter = 1;
             }
 
             integerAsString.Insert(0, digit);
         }
 
-        result.Append(integerAsString);
-
-        if (_decimalPart.Count > 0)
-        {
-            StringBuilder decimalAsString = new StringBuilder();
-
-            foreach (int digit in _decimalPart.Reverse())
-            {
-                decimalAsString.Insert(0, digit);
-            }
-
-            result.Append(decimalSeparator);
-            result.Append(decimalAsString);
-        }
-
         if (!_isPositive)
         {
-            result.Insert(0, '-');
+            integerAsString.Insert(0, '-');
         }
 
-        return result.ToString();
+        return integerAsString.ToString();
+    }
+
+    private string FormatDecimalPart()
+    {
+        return _decimalPart.Aggregate(string.Empty, (seed, digit) => seed + digit);
     }
 }
